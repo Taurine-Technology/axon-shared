@@ -1,0 +1,33 @@
+[project]
+name = "axon-shared"
+version = "0.1.0"
+description = "Shared protocol definitions and utilities for the Axon network management platform"
+readme = "README.md"
+license = "AGPL-3.0-only"
+requires-python = ">=3.10"
+authors = [
+    { name = "Taurine Technology", email = "opensource@taurinetech.com" }
+]
+dependencies = [
+    "protobuf>=4.0,<6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "grpcio-tools==1.62.3",
+    "flake8>=6.0",
+]
+test = [
+    "pytest>=7.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["axon_shared*"]
+
+[tool.flake8]
+max-line-length = 120
+exclude = ["*_pb2.py", "*_pb2_grpc.py"]
