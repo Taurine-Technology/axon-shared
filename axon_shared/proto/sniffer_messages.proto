@@ -1,0 +1,62 @@
+// Protocol Buffer schema for sniffer plugin messages
+//
+// This schema defines the wire format for sniffer installation commands
+// transmitted from the Axon controller to agents via MQTT.
+//
+// Usage:
+//   1. Controller serializes SnifferInstallCommand using this schema
+//   2. Publishes to MQTT topic: axon/control/{site_id}/{device_id}/plugin/sniffer/install
+//   3. Agent receives and deserializes the command
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. sniffer_messages.proto
+
+syntax = "proto3";
+
+package axon.plugin;
+
+// SnifferInstallCommand is sent from controller to agent to install/configure sniffer.
+// Agent uses this configuration to set up traffic capture and forwarding.
+message SnifferInstallCommand {
+    // Name of the OVS bridge to attach the sniffer to
+    string bridge_name = 1;
+
+    // Interface name for capturing traffic (mirror port)
+    string monitor_interface = 2;
+
+    // Interface facing the client/LAN network (deprecated, optional for legacy support)
+    // Note: This field is no longer used by the sniffer agent but kept for backward compatibility
+    string port_to_client = 3;
+
+    // Interface facing the router/WAN network (deprecated, optional for legacy support)
+    // Note: This field is no longer used by the sniffer agent but kept for backward compatibility
+    string port_to_router = 4;
+
+    // Number of bytes per packet to capture for ML model
+    // This affects the payload_sample size sent to the API
+    uint32 num_bytes = 5;
+
+    // Number of packets to capture per flow for ML model
+    // This affects how many packets are aggregated before classification
+    uint32 num_packets = 6;
+}
+
+// Status enum for installation responses
+enum InstallStatus {
+    INSTALL_STATUS_UNSPECIFIED = 0;
+    INSTALL_STATUS_SUCCESS = 1;
+    INSTALL_STATUS_ERROR = 2;
+}
+
+// SnifferInstallResponse is sent from agent to controller after install attempt.
+// Used for future implementation of response handling.
+message SnifferInstallResponse {
+    // Status of the installation
+    InstallStatus status = 1;
+
+    // Human-readable message describing the result
+    string message = 2;
+
+    // Bridge name that was configured (for correlation)
+    string bridge_name = 3;
+}

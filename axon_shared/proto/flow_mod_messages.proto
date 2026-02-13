@@ -1,0 +1,209 @@
+// Protocol Buffer schema for OpenFlow flow modification commands
+//
+// This schema defines the wire format for flow_mod commands transmitted from
+// the Axon controller to switch agents via MQTT, and responses back.
+//
+// MQTT Topic Pattern:
+//   Command:  axon/control/{site_id}/{device_id}/flow_mod/{action}
+//   Response: axon/control/{site_id}/{device_id}/flow_mod/{action}/response
+//
+// Supported Actions:
+//   - add: Add a new flow rule to the switch
+//     Topic: axon/control/{site_id}/{device_id}/flow_mod/add
+//     OVS:   ovs-ofctl add-flow {bridge} "cookie=...,priority=...,match...,actions=..." -OOpenflow13
+//
+//   - delete: Remove a flow rule from the switch
+//     Topic: axon/control/{site_id}/{device_id}/flow_mod/delete
+//     OVS:   ovs-ofctl del-flows {bridge} cookie={cookie}/-1 -OOpenflow13
+//
+//   - modify: Modify an existing flow rule (update actions)
+//     Topic: axon/control/{site_id}/{device_id}/flow_mod/modify
+//     OVS:   ovs-ofctl mod-flows {bridge} "cookie=...,match...,actions=..." -OOpenflow13
+//
+// Usage:
+//   1. Controller classifies a flow and determines meter assignment
+//   2. Controller composes 64-bit cookie: (category_cookie << 32) | flow_id
+//   3. Controller serializes FlowModCommand using this schema
+//   4. Publishes to MQTT topic: axon/control/{site_id}/{device_id}/flow_mod/{action}
+//   5. Switch executes corresponding ovs-ofctl command
+//   6. Switch responds with FlowModResponse on: axon/control/{site_id}/{device_id}/flow_mod/{action}/response
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. flow_mod_messages.proto
+
+syntax = "proto3";
+
+package axon.traffic;
+
+// FlowModAction represents the action to perform on the flow table.
+enum FlowModAction {
+    FLOW_MOD_ACTION_UNSPECIFIED = 0;
+    FLOW_MOD_ACTION_ADD = 1;     // Add a new flow rule
+    FLOW_MOD_ACTION_MODIFY = 2;  // Modify an existing flow rule
+    FLOW_MOD_ACTION_DELETE = 3;  // Delete a flow rule
+}
+
+// FlowModResponseStatus indicates the result of a flow modification operation.
+enum FlowModResponseStatus {
+    FLOW_MOD_RESPONSE_STATUS_UNSPECIFIED = 0;
+    FLOW_MOD_RESPONSE_STATUS_SUCCESS = 1;
+    FLOW_MOD_RESPONSE_STATUS_ERROR = 2;
+    FLOW_MOD_RESPONSE_STATUS_ALREADY_EXISTS = 3;
+    FLOW_MOD_RESPONSE_STATUS_NOT_FOUND = 4;
+    FLOW_MOD_RESPONSE_STATUS_METER_NOT_FOUND = 5;
+    FLOW_MOD_RESPONSE_STATUS_BRIDGE_NOT_FOUND = 6;
+}
+
+// FlowModCommand represents a command to add, modify, or delete a flow rule on a switch.
+// Sent from Axon controller to the switch agent after traffic classification.
+message FlowModCommand {
+    // Action to perform (ADD, MODIFY, DELETE)
+    FlowModAction action = 1;
+
+    // === Flow Match Criteria ===
+    // These fields define the traffic to match
+
+    // Source IP address (IPv4 or IPv6, can include CIDR prefix)
+    string src_ip = 2;
+
+    // Destination IP address (IPv4 or IPv6, can include CIDR prefix)
+    string dst_ip = 3;
+
+    // Source port number (0 = any)
+    uint32 src_port = 4;
+
+    // Destination port number (0 = any)
+    uint32 dst_port = 5;
+
+    // Source MAC address (aa:bb:cc:dd:ee:ff format)
+    string src_mac = 6;
+
+    // Destination MAC address
+    string dst_mac = 7;
+
+    // Protocol: true = TCP, false = UDP
+    bool is_tcp = 8;
+
+    // VLAN ID (0 = no VLAN match)
+    uint32 vlan_id = 9;
+
+    // === OpenFlow Parameters ===
+
+    // Bridge name where the flow should be installed (e.g., "br0")
+    string bridge_name = 10;
+
+    // 64-bit OpenFlow cookie for flow identification and statistics
+    // Composed of: (category_cookie << 32) | flow_id
+    // Upper 32 bits: Category identifier from traffic classification
+    // Lower 32 bits: Original flow_id from agent's FlowData
+    uint64 openflow_cookie = 11;
+
+    // Cookie mask for matching (typically 0xFFFFFFFFFFFFFFFF for exact match)
+    // Use 0xFFFFFFFF00000000 to match all flows of a category
+    uint64 cookie_mask = 12;
+
+    // Meter ID to apply for rate limiting (0 = no meter)
+    // The meter must already exist on the switch (created via meter/create)
+    uint32 meter_id = 13;
+
+    // OpenFlow rule priority (higher = matched first)
+    // Typical range: 0-65535
+    uint32 priority = 14;
+
+    // Idle timeout in seconds (flow is removed after this period of inactivity)
+    // 0 = no timeout (permanent until explicitly deleted)
+    uint32 idle_timeout = 15;
+
+    // Hard timeout in seconds (flow is removed after this duration)
+    // 0 = no timeout (permanent until explicitly deleted)
+    uint32 hard_timeout = 16;
+
+    // Output port or action (optional, defaults to NORMAL forwarding)
+    // Examples: "NORMAL", "DROP", "FLOOD", "IN_PORT", or port number
+    string output_action = 17;
+
+    // === Correlation and Metadata ===
+
+    // Original flow_id from the agent's FlowData (for response correlation)
+    uint32 flow_id = 18;
+
+    // Classification result from the ML model (e.g., "Facebook", "YouTube")
+    string classification = 19;
+
+    // Classification confidence score (0.0 - 1.0)
+    float confidence = 20;
+
+    // Device identifier (switch agent)
+    string device_id = 21;
+
+    // Site identifier for multi-tenancy
+    string site_id = 22;
+
+    // Command timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 23;
+
+    // Optional: Table ID for multi-table pipelines (default = 0)
+    uint32 table_id = 24;
+}
+
+// FlowModResponse represents the result of a flow modification operation.
+// Sent from the switch agent back to the Axon controller.
+message FlowModResponse {
+    // Result status of the operation
+    FlowModResponseStatus status = 1;
+
+    // Original flow_id for correlation
+    uint32 flow_id = 2;
+
+    // OpenFlow cookie that was set/matched
+    uint64 openflow_cookie = 3;
+
+    // Bridge name where the operation was performed
+    string bridge_name = 4;
+
+    // Human-readable message (success confirmation or error description)
+    string message = 5;
+
+    // Original action that was requested
+    FlowModAction action = 6;
+
+    // Response timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 7;
+
+    // Optional: Error code for programmatic handling
+    string error_code = 8;
+
+    // Optional: OVS command that was executed (for debugging)
+    string ovs_command = 9;
+}
+
+// FlowModBatchCommand represents a batch of flow modifications.
+// Used for efficient bulk operations.
+message FlowModBatchCommand {
+    // List of flow modification commands
+    repeated FlowModCommand commands = 1;
+
+    // Device identifier
+    string device_id = 2;
+
+    // Site identifier
+    string site_id = 3;
+
+    // Batch timestamp
+    uint64 timestamp_ms = 4;
+}
+
+// FlowModBatchResponse represents the results of a batch operation.
+message FlowModBatchResponse {
+    // Individual responses for each command
+    repeated FlowModResponse responses = 1;
+
+    // Number of successful operations
+    uint32 success_count = 2;
+
+    // Number of failed operations
+    uint32 failure_count = 3;
+
+    // Response timestamp
+    uint64 timestamp_ms = 4;
+}

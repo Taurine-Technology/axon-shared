@@ -1,0 +1,130 @@
+// Protocol Buffer schema for uptime monitoring messages
+//
+// This schema defines the wire format for uptime check requests and responses
+// transmitted between the Axon controller and switch agents via MQTT.
+//
+// Two distinct check types:
+// 1. Agent Heartbeat: Lightweight MQTT message to verify switch/agent is online
+// 2. Endpoint Ping: Agent performs ICMP ping to endpoint devices
+//
+// MQTT Topic Patterns:
+//   Agent Heartbeat Request:  axon/control/{site_id}/{device_id}/uptime_check/heartbeat
+//   Endpoint Ping Request:     axon/control/{site_id}/{device_id}/uptime_check/request
+//   Response (both types):     axon/control/{site_id}/{device_id}/uptime_check/response
+//
+// Usage:
+//   1. Controller serializes request using this schema
+//   2. Publishes to appropriate MQTT topic
+//   3. Agent receives message, performs check (heartbeat response or ICMP ping)
+//   4. Agent responds with appropriate response message
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. uptime_check_messages.proto
+
+syntax = "proto3";
+
+package axon.uptime_monitoring;
+
+// UptimeStatus indicates whether a device is up or down.
+enum UptimeStatus {
+    UPTIME_STATUS_UNSPECIFIED = 0;
+    UPTIME_STATUS_UP = 1;    // Device is reachable/online
+    UPTIME_STATUS_DOWN = 2;  // Device is unreachable/offline
+}
+
+// AgentHeartbeatRequest is sent from the controller to verify switch/agent is online.
+// This is a lightweight check - agent just needs to respond via MQTT.
+message AgentHeartbeatRequest {
+    // Unique request identifier (UUID) for correlation
+    string request_id = 1;
+
+    // Request timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 2;
+
+    // Device identifier for validation
+    string device_id = 3;
+
+    // Site identifier for validation
+    string site_id = 4;
+}
+
+// AgentHeartbeatResponse is sent from the switch agent back to the controller.
+message AgentHeartbeatResponse {
+    // Correlation ID from request
+    string request_id = 1;
+
+    // Response timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 2;
+
+    // Device ID
+    string device_id = 3;
+
+    // Site ID
+    string site_id = 4;
+
+    // Status (should always be UP for heartbeat response)
+    UptimeStatus status = 5;
+
+    // Agent version (optional)
+    string agent_version = 6;
+}
+
+// EndpointPingRequest is sent from the controller to request ICMP ping of an endpoint.
+message EndpointPingRequest {
+    // Unique request identifier (UUID) for correlation
+    string request_id = 1;
+
+    // Request timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 2;
+
+    // Device identifier (switch agent performing the ping)
+    string device_id = 3;
+
+    // Site identifier
+    string site_id = 4;
+
+    // Target IP address to ping
+    string target_ip = 5;
+
+    // Optional target hostname
+    string target_hostname = 6;
+
+    // Ping timeout in seconds (default: 5)
+    uint32 timeout_seconds = 7;
+
+    // Number of ping packets to send (default: 1)
+    uint32 count = 8;
+}
+
+// EndpointPingResponse is sent from the switch agent back to the controller with ping results.
+message EndpointPingResponse {
+    // Correlation ID from request
+    string request_id = 1;
+
+    // Response timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 2;
+
+    // Device ID (switch agent that performed the ping)
+    string device_id = 3;
+
+    // Site ID
+    string site_id = 4;
+
+    // Target IP that was pinged
+    string target_ip = 5;
+
+    // Status (up or down)
+    UptimeStatus status = 6;
+
+    // ICMP response time in milliseconds (0 if down or no response)
+    uint32 response_time_ms = 7;
+
+    // Error message if ping failed
+    string error_message = 8;
+
+    // Number of successful pings (out of count requested)
+    uint32 successful_pings = 9;
+
+    // Number of failed pings
+    uint32 failed_pings = 10;
+}

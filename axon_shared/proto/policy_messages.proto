@@ -1,0 +1,371 @@
+// Protocol Buffer schema for traffic policy management
+//
+// This schema defines the wire format for policy rules transmitted from
+// the Axon controller to classifier agents via MQTT.
+//
+// Policies define blocklist and rate-limit rules that are enforced locally
+// on the switch by the NFStream classifier agent.
+//
+// Usage:
+//   1. Controller serializes PolicyUpdate or PolicySync using this schema
+//   2. Optionally compresses with Zstandard
+//   3. Publishes to MQTT topic: axon/control/{site_id}/{device_id}/policy/{action}
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. policy_messages.proto
+
+syntax = "proto3";
+
+package axon.policy;
+
+// PolicyAction defines the type of policy operation.
+// Used in PolicyUpdate to specify the action and in PolicyResponse to echo the performed action.
+enum PolicyAction {
+    POLICY_ACTION_UNSPECIFIED = 0;  // Default/unknown action
+    POLICY_ACTION_ADD = 1;          // Add a new rule
+    POLICY_ACTION_REMOVE = 2;       // Remove an existing rule
+    POLICY_ACTION_UPDATE = 3;       // Update an existing rule
+    POLICY_ACTION_SYNC = 4;         // Full policy synchronization (replaces all rules)
+}
+
+// TimeConstraint defines when a rule should be active.
+// Used for time-based policy enforcement (e.g., block social media during work hours).
+message TimeConstraint {
+    // Start time in HH:MM format (24-hour, e.g., "09:00")
+    string time_start = 1;
+
+    // End time in HH:MM format (24-hour, e.g., "17:00")
+    // Note: If time_end < time_start, rule spans midnight (e.g., 22:00 - 06:00)
+    string time_end = 2;
+
+    // Days of week rule is active (0=Monday, 1=Tuesday, ..., 6=Sunday)
+    // Empty list = all days
+    repeated int32 days_of_week = 3;
+
+    // IANA timezone (optional, defaults to device local time)
+    // Examples: "America/New_York", "Europe/London", "UTC"
+    string timezone = 4;
+}
+
+// BlockRule defines a rule to block traffic for a specific application.
+message BlockRule {
+    // Application name to block (e.g., "Instagram", "TikTok")
+    // Matches nDPI application names (case-insensitive)
+    string app_name = 1;
+
+    // Optional regex pattern for matching application names
+    // If set, matches applications where name matches this pattern
+    string app_pattern = 2;
+
+    // OVS flow priority (higher = more important)
+    // Auto-calculated based on specificity: scope + endpoint/IP/time modifiers
+    uint32 priority = 3;
+
+    // Flow idle timeout in seconds
+    // Default: 300 (5 minutes)
+    uint32 idle_timeout = 4;
+
+    // Whether the rule is currently active
+    bool enabled = 5;
+
+    // Unique rule identifier (for updates/removes)
+    uint32 rule_id = 6;
+
+    // --- Advanced targeting fields (v2) ---
+
+    // Target MAC address (from endpoint_device.mac_address)
+    // Match flows where src_mac or dst_mac equals this value
+    string target_mac = 7;
+
+    // Target IP address filter
+    // Match flows where src_ip or dst_ip equals this value
+    string target_ip = 8;
+
+    // Target CIDR network filter (e.g., "192.168.1.0/24")
+    // Match flows where src_ip or dst_ip is within this network
+    string target_network = 9;
+
+    // Time-based constraints for when the rule should be enforced
+    TimeConstraint time_constraint = 10;
+}
+
+// RateLimitRule defines a rule to rate-limit traffic for a specific application.
+message RateLimitRule {
+    // Application name to rate limit (e.g., "YouTube", "Netflix")
+    string app_name = 1;
+
+    // Optional regex pattern for matching application names
+    string app_pattern = 2;
+
+    // OVS meter ID (must be pre-created via meter/create)
+    uint32 meter_id = 3;
+
+    // Rate limit in kilobits per second
+    uint32 rate_kbps = 4;
+
+    // Burst allowance in kilobits (0 = no burst)
+    uint32 burst_kbps = 5;
+
+    // OVS flow priority (higher = more important)
+    // Auto-calculated based on specificity: scope + endpoint/IP/time modifiers
+    uint32 priority = 6;
+
+    // Flow idle timeout in seconds
+    // Default: 300 (5 minutes)
+    uint32 idle_timeout = 7;
+
+    // Whether the rule is currently active
+    bool enabled = 8;
+
+    // Unique rule identifier (for updates/removes)
+    uint32 rule_id = 9;
+
+    // --- Advanced targeting fields (v2) ---
+
+    // Target MAC address (from endpoint_device.mac_address)
+    // Match flows where src_mac or dst_mac equals this value
+    string target_mac = 10;
+
+    // Target IP address filter
+    // Match flows where src_ip or dst_ip equals this value
+    string target_ip = 11;
+
+    // Target CIDR network filter (e.g., "192.168.1.0/24")
+    // Match flows where src_ip or dst_ip is within this network
+    string target_network = 12;
+
+    // Time-based constraints for when the rule should be enforced
+    TimeConstraint time_constraint = 13;
+}
+
+// Direction specifies which traffic direction to match for IP-based rules.
+enum Direction {
+    DIRECTION_BOTH = 0;   // Match both source and destination
+    DIRECTION_SRC = 1;    // Match source IP only
+    DIRECTION_DST = 2;    // Match destination IP only
+}
+
+// IPBlockRule defines a rule to block traffic by IP address or CIDR range.
+// IP-based rules can be installed directly as OVS flows without DPI classification.
+message IPBlockRule {
+    // Unique rule identifier (for updates/removes)
+    uint32 rule_id = 1;
+
+    // Single IP address to block (e.g., "1.2.3.4")
+    // Either ip_address or cidr_range must be set, not both
+    string ip_address = 2;
+
+    // CIDR range to block (e.g., "10.0.0.0/8", "192.168.1.0/24")
+    string cidr_range = 3;
+
+    // Direction to match (source, destination, or both)
+    Direction direction = 4;
+
+    // OVS flow priority (higher = more important)
+    // Default: 7000 (higher than app-based blocks)
+    uint32 priority = 5;
+
+    // Flow idle timeout in seconds
+    // Default: 300 (5 minutes)
+    uint32 idle_timeout = 6;
+
+    // Whether the rule is currently active
+    bool enabled = 7;
+
+    // Optional description for logging/debugging
+    string description = 8;
+}
+
+// URLBlockRule defines a rule to block traffic by domain or URL pattern.
+// URL-based rules match against SNI (Server Name Indication) from TLS/QUIC handshakes.
+message URLBlockRule {
+    // Unique rule identifier (for updates/removes)
+    uint32 rule_id = 1;
+
+    // Exact domain to block (e.g., "ads.example.com")
+    // Either domain or domain_pattern must be set, not both
+    string domain = 2;
+
+    // Wildcard pattern to block (e.g., "*.doubleclick.net", "ads.*")
+    string domain_pattern = 3;
+
+    // Whether to also match subdomains of the specified domain
+    // e.g., if domain="example.com" and match_subdomains=true,
+    // also blocks "sub.example.com", "foo.bar.example.com", etc.
+    bool match_subdomains = 4;
+
+    // OVS flow priority (higher = more important)
+    // Default: 7000
+    uint32 priority = 5;
+
+    // Flow idle timeout in seconds
+    // Default: 300 (5 minutes)
+    uint32 idle_timeout = 6;
+
+    // Whether the rule is currently active
+    bool enabled = 7;
+
+    // Optional description for logging/debugging
+    string description = 8;
+}
+
+// BlockListSync represents a collection of block entries (IPs/domains).
+// Used to sync entire block lists to switches efficiently.
+message BlockListSync {
+    // Unique block list identifier
+    uint32 list_id = 1;
+
+    // Human-readable name for logging
+    string name = 2;
+
+    // Whether the block list is enabled
+    bool enabled = 3;
+
+    // OVS flow priority for all entries in this list
+    uint32 priority = 4;
+
+    // IP addresses and CIDR ranges to block
+    // Each entry is either a single IP (e.g., "1.2.3.4") or
+    // a CIDR range (e.g., "10.0.0.0/8")
+    repeated string ip_entries = 5;
+
+    // Domains and URL patterns to block
+    // Each entry is either an exact domain (e.g., "ads.example.com") or
+    // a wildcard pattern (e.g., "*.doubleclick.net")
+    repeated string domain_entries = 6;
+
+    // Direction to match for IP entries (source, destination, or both)
+    // Default: DIRECTION_BOTH
+    Direction direction = 7;
+
+    // Flow idle timeout in seconds for all entries
+    // Default: 300 (5 minutes)
+    uint32 idle_timeout = 8;
+
+    // Whether to match subdomains for domain entries
+    // Default: false
+    bool match_subdomains = 9;
+}
+
+// PolicyUpdate represents a single policy rule change (add/update/remove).
+message PolicyUpdate {
+    // Action type
+    PolicyAction action = 1;
+
+    // One of the rule types must be set
+    oneof rule {
+        BlockRule block_rule = 2;
+        RateLimitRule rate_limit_rule = 3;
+        IPBlockRule ip_block_rule = 6;
+        URLBlockRule url_block_rule = 7;
+        BlockListSync block_list = 8;
+    }
+
+    // Timestamp of the update (ms since epoch)
+    uint64 timestamp_ms = 4;
+
+    // Correlation ID for tracking
+    string correlation_id = 5;
+}
+
+// PolicySync represents a full policy synchronization (replaces all rules).
+message PolicySync {
+    // All application-based block rules (replaces existing)
+    repeated BlockRule block_rules = 1;
+
+    // All rate limit rules (replaces existing)
+    repeated RateLimitRule rate_limit_rules = 2;
+
+    // Timestamp of the sync (ms since epoch)
+    uint64 timestamp_ms = 3;
+
+    // Correlation ID for tracking
+    string correlation_id = 4;
+
+    // Version number for conflict detection
+    uint64 version = 5;
+
+    // All IP-based block rules (replaces existing)
+    repeated IPBlockRule ip_block_rules = 6;
+
+    // All URL/domain-based block rules (replaces existing)
+    repeated URLBlockRule url_block_rules = 7;
+
+    // All block lists (replaces existing)
+    repeated BlockListSync block_lists = 8;
+}
+
+// PolicySyncRequest is sent by the agent to request a full policy sync.
+// The controller responds with PolicySync.
+message PolicySyncRequest {
+    // Device ID requesting the sync
+    string device_id = 1;
+
+    // Site ID for multi-tenancy
+    string site_id = 2;
+
+    // Timestamp of the request
+    uint64 timestamp_ms = 3;
+
+    // Optional: Current policy version on the device (for delta sync)
+    uint64 current_version = 4;
+}
+
+// PolicyResponseStatus indicates the result of a policy operation.
+enum PolicyResponseStatus {
+    POLICY_RESPONSE_STATUS_UNSPECIFIED = 0;
+    POLICY_RESPONSE_STATUS_SUCCESS = 1;
+    POLICY_RESPONSE_STATUS_ERROR = 2;
+    POLICY_RESPONSE_STATUS_PARTIAL = 3;  // Some rules applied, some failed
+}
+
+// PolicyRuleStatus represents the status of an individual rule application.
+message PolicyRuleStatus {
+    // Rule ID that was processed
+    uint32 rule_id = 1;
+
+    // Application name for reference
+    string app_name = 2;
+
+    // Whether this specific rule succeeded
+    bool success = 3;
+
+    // Error message if failed
+    string error_message = 4;
+
+    // Meter ID assigned by the switch (for rate limit rules)
+    uint32 meter_id = 5;
+}
+
+// PolicyResponse is sent by the switch after processing a PolicyUpdate or PolicySync.
+message PolicyResponse {
+    // Overall status of the policy operation
+    PolicyResponseStatus status = 1;
+
+    // Action that was performed
+    PolicyAction action = 2;
+
+    // Human-readable message
+    string message = 3;
+
+    // Status of individual application-based block rules
+    repeated PolicyRuleStatus block_rule_statuses = 4;
+
+    // Status of individual rate limit rules
+    repeated PolicyRuleStatus rate_limit_rule_statuses = 5;
+
+    // Timestamp of the response (ms since epoch)
+    uint64 timestamp_ms = 6;
+
+    // Correlation ID for tracking (echoed from request)
+    string correlation_id = 7;
+
+    // Status of individual IP block rules
+    repeated PolicyRuleStatus ip_block_rule_statuses = 8;
+
+    // Status of individual URL block rules
+    repeated PolicyRuleStatus url_block_rule_statuses = 9;
+
+    // Status of block list syncs
+    repeated PolicyRuleStatus block_list_statuses = 10;
+}

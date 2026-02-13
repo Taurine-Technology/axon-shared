@@ -1,0 +1,95 @@
+// Protocol Buffer schema for classifier flow statistics
+//
+// This schema defines the wire format for flow statistics messages
+// sent from the NFStream classifier on edge devices to the controller.
+//
+// MQTT Topic Pattern:
+//   axon/data/{site_id}/{device_id}/classifier-flow-stats
+//
+// Messages are compressed with Zstandard before transmission.
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. classifier_flow_stats_messages.proto
+
+syntax = "proto3";
+
+package axon.classifier;
+
+// ClassifierFlowStatsEntry contains statistics for a single classified flow.
+// Counters (byte_count, packet_count) are CUMULATIVE from the switch.
+// To calculate usage over a time period, use: MAX(value) - MIN(value)
+message ClassifierFlowStatsEntry {
+    // Full 64-bit OpenFlow cookie
+    // Structure: [flow_hash (32 bits) | classification_id (32 bits)]
+    uint64 openflow_cookie = 1;
+
+    // Lower 32 bits of cookie - hash of normalized app name
+    uint32 classification_id = 2;
+
+    // Upper 32 bits of cookie - unique flow identifier (5-tuple + timestamp hash)
+    uint32 flow_hash = 3;
+
+    // Normalized application name (lowercase, e.g., "instagram", "youtube")
+    string app_name = 4;
+
+    // Cumulative bytes transferred through this flow
+    uint64 byte_count = 5;
+
+    // Cumulative packets transferred through this flow
+    uint64 packet_count = 6;
+
+    // Flow duration in seconds
+    float duration_sec = 7;
+
+    // Action applied to this flow: "DROP" or "METER"
+    string action_type = 8;
+
+    // OVS meter ID (0 if action is DROP)
+    uint32 meter_id = 9;
+
+    // OpenFlow rule priority (5000+ for classifier flows)
+    uint32 priority = 10;
+
+    // Protocol: "TCP", "UDP", "ICMP", "ARP", or "OTHER"
+    string protocol = 11;
+
+    // Source MAC address (client/LAN device)
+    string src_mac = 12;
+
+    // Destination MAC address (gateway)
+    string dst_mac = 13;
+
+    // Source IP address (for endpoint identification)
+    string src_ip = 14;
+
+    // Destination IP address (for endpoint identification)
+    string dst_ip = 15;
+
+    // Source port number
+    uint32 src_port = 16;
+
+    // Destination port number
+    uint32 dst_port = 17;
+}
+
+// ClassifierFlowStatsBatch contains a batch of flow statistics from a device.
+// Batches are sent every poll_interval_sec (typically 5 seconds).
+message ClassifierFlowStatsBatch {
+    // Site identifier for multi-tenancy
+    string site_id = 1;
+
+    // Device/switch UUID (assigned during provisioning)
+    string device_id = 2;
+
+    // OVS bridge name (e.g., "br0")
+    string bridge_name = 3;
+
+    // Batch creation timestamp (milliseconds since epoch)
+    uint64 timestamp_ms = 4;
+
+    // List of flow statistics entries
+    repeated ClassifierFlowStatsEntry stats = 5;
+
+    // Polling interval in seconds (typically 5)
+    uint32 poll_interval_sec = 6;
+}

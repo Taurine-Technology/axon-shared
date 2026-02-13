@@ -1,0 +1,141 @@
+// Protocol Buffer schema for traffic classification
+//
+// This schema defines the wire format for flow data transmitted from
+// sniffer agents to the Axon controller via MQTT.
+//
+// Usage:
+//   1. Sniffer serializes FlowBatch using this schema
+//   2. Compresses with Zstandard
+//   3. Publishes to MQTT topic: axon/data/{site_id}/{device_id}/flows
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. flow_messages.proto
+
+syntax = "proto3";
+
+package axon.traffic;
+
+// FlowData represents a single network flow captured by the sniffer.
+// Contains the 5-tuple, MAC addresses, and payload sample for classification.
+message FlowData {
+    // Source IP address (IPv4 or IPv6)
+    string src_ip = 1;
+
+    // Destination IP address (IPv4 or IPv6)
+    string dst_ip = 2;
+
+    // Source port number
+    uint32 src_port = 3;
+
+    // Destination port number
+    uint32 dst_port = 4;
+
+    // Source MAC address
+    string src_mac = 5;
+
+    // Destination MAC address
+    string dst_mac = 6;
+
+    // Raw payload sample bytes for ML classification
+    // This is the flattened packet data used by the model
+    // Format: Each packet is NUM_BYTES (default 225), with NUM_PACKETS (default 5)
+    // Total size: NUM_BYTES * NUM_PACKETS (default: 225 * 5 = 1125 bytes)
+    // Controller reshapes to (225, 5) matrix for model input
+    bytes payload_sample = 7;
+
+    // Protocol flag: true = TCP, false = UDP
+    bool is_tcp = 8;
+
+    // Direction flag: true if src_ip is the client (private IP)
+    bool src_is_client = 9;
+
+    // Number of packets captured for this flow
+    uint32 packet_count = 10;
+
+    // Flow identifier for correlation and OpenFlow cookie composition
+    // Combined with category cookie to form 64-bit OpenFlow cookie:
+    // (category_cookie << 32) | flow_id
+    uint32 flow_id = 11;
+}
+
+// FlowBatch represents a batch of flows from a single device.
+// Used for efficient transmission of multiple flows in one MQTT message.
+message FlowBatch {
+    // Switch/device identifier (e.g., "openflow:172223708800235")
+    string switch_id = 1;
+
+    // Site identifier for multi-tenancy
+    string site_id = 2;
+
+    // Batch creation timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 3;
+
+    // Device identifier (MAC or UUID of the agent)
+    string device_id = 4;
+
+    // List of flows in this batch
+    repeated FlowData flows = 5;
+
+    // Optional: Model name to use for classification
+    // If not specified, uses the active model
+    string model_name = 6;
+}
+
+// ConfidenceLevel indicates the confidence in a classification result.
+enum ConfidenceLevel {
+    CONFIDENCE_UNSPECIFIED = 0;
+    CONFIDENCE_LOW = 1;
+    CONFIDENCE_MEDIUM = 2;
+    CONFIDENCE_HIGH = 3;
+    CONFIDENCE_MULTIPLE_CANDIDATES = 4;
+    CONFIDENCE_UNCERTAIN = 5;
+}
+
+// DetectionMethod indicates how the classification was determined.
+enum DetectionMethod {
+    DETECTION_METHOD_UNSPECIFIED = 0;
+    DETECTION_METHOD_MODEL = 1;
+    DETECTION_METHOD_DNS = 2;
+    DETECTION_METHOD_VPN = 3;
+    DETECTION_METHOD_ASN_FALLBACK = 4;
+}
+
+// ClassificationResult represents the result of classifying a single flow.
+// Sent back to agent or stored in database.
+message ClassificationResult {
+    // Original flow identifier for correlation (matches FlowData.flow_id)
+    uint32 flow_id = 1;
+
+    // Predicted application/category name
+    string classification = 2;
+
+    // Confidence level of the classification
+    ConfidenceLevel confidence_level = 3;
+
+    // Confidence score (0.0 - 1.0)
+    float confidence_score = 4;
+
+    // Time taken for prediction in milliseconds
+    float prediction_time_ms = 5;
+
+    // Detection method used for classification
+    DetectionMethod detection_method = 6;
+}
+
+// ClassificationBatchResult represents results for a batch of flows.
+message ClassificationBatchResult {
+    // Original batch timestamp for correlation
+    uint64 original_timestamp_ms = 1;
+
+    // Processing timestamp
+    uint64 processed_timestamp_ms = 2;
+
+    // List of classification results
+    repeated ClassificationResult results = 3;
+
+    // Total processing time for the batch in milliseconds
+    float total_processing_time_ms = 4;
+
+    // Model name used for classification
+    string model_name = 5;
+}

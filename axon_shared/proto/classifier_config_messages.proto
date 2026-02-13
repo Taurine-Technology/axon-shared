@@ -1,0 +1,212 @@
+// Protocol Buffer schema for classifier configuration and installation
+//
+// This schema defines the wire format for classifier configuration messages
+// transmitted from the Axon controller to edge devices via MQTT.
+//
+// MQTT Topic Pattern:
+//   Configure: axon/control/{site_id}/{device_id}/classifier/configure
+//   Enable:    axon/control/{site_id}/{device_id}/classifier/enable
+//   Disable:   axon/control/{site_id}/{device_id}/classifier/disable
+//   Status:    axon/control/{site_id}/{device_id}/classifier/status
+//   Response:  axon/data/{site_id}/{device_id}/classifier/status
+//
+// Installation Flow:
+//   1. Controller sends ClassifierConfig with action=CONFIGURE
+//   2. Agent writes config to /etc/axon/classifier_config.json
+//   3. Agent restarts the classifier service (if running)
+//   4. Agent responds with ClassifierStatusResponse
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. classifier_config_messages.proto
+
+syntax = "proto3";
+
+package axon.classifier;
+
+// ClassifierAction represents the action to perform on the classifier.
+enum ClassifierAction {
+    CLASSIFIER_ACTION_UNSPECIFIED = 0;
+    CLASSIFIER_ACTION_CONFIGURE = 1;   // Update configuration
+    CLASSIFIER_ACTION_ENABLE = 2;      // Enable and start the classifier
+    CLASSIFIER_ACTION_DISABLE = 3;     // Disable and stop the classifier
+    CLASSIFIER_ACTION_STATUS = 4;      // Request current status
+    CLASSIFIER_ACTION_RESTART = 5;     // Restart the classifier service
+}
+
+// ClassifierConfig is sent by the controller to configure the classifier.
+// This message can fully configure or partially update the classifier settings.
+message ClassifierConfig {
+    // Action to perform
+    ClassifierAction action = 1;
+
+    // Network interface to capture traffic from
+    // Examples: "eth0", "br0", "ens192"
+    string monitor_interface = 2;
+
+    // OVS bridge name for policy enforcement
+    // Required if policy_enabled=true
+    string bridge_name = 3;
+
+    // Number of bytes to capture per packet (default: 225)
+    uint32 num_bytes = 4;
+
+    // Number of packets to capture per flow (default: 5)
+    uint32 num_packets = 5;
+
+    // Seconds between batch sends to controller (default: 1.0)
+    float batch_interval = 6;
+
+    // Flow idle timeout in seconds (default: 30)
+    uint32 idle_timeout = 7;
+
+    // Enable policy enforcement (block/rate-limit)
+    // When true, classifier will apply policies from the policy cache
+    bool policy_enabled = 8;
+
+    // SQLite database path for policy cache
+    // Default: /var/lib/axon/policy_cache.db
+    string policy_db_path = 9;
+
+    // Timestamp of the configuration change
+    uint64 timestamp_ms = 10;
+
+    // Correlation ID for tracking requests/responses
+    string correlation_id = 11;
+}
+
+// ClassifierStatus represents the current state of the classifier.
+enum ClassifierStatus {
+    CLASSIFIER_STATUS_UNSPECIFIED = 0;
+    CLASSIFIER_STATUS_STOPPED = 1;      // Service is stopped
+    CLASSIFIER_STATUS_STARTING = 2;     // Service is starting
+    CLASSIFIER_STATUS_RUNNING = 3;      // Service is running and capturing
+    CLASSIFIER_STATUS_ERROR = 4;        // Service encountered an error
+    CLASSIFIER_STATUS_DISABLED = 5;     // Service is disabled (won't auto-start)
+    CLASSIFIER_STATUS_NOT_CONFIGURED = 6; // No configuration exists
+}
+
+// ClassifierStatusResponse is sent by the agent to report classifier status.
+message ClassifierStatusResponse {
+    // Current status of the classifier
+    ClassifierStatus status = 1;
+
+    // Human-readable status message
+    string message = 2;
+
+    // Current configuration (if configured)
+    ClassifierConfig current_config = 3;
+
+    // Statistics (if running)
+    ClassifierStats stats = 4;
+
+    // Timestamp of the response
+    uint64 timestamp_ms = 5;
+
+    // Correlation ID from the request (if any)
+    string correlation_id = 6;
+
+    // Error details (if status is ERROR)
+    string error_details = 7;
+
+    // Classifier version
+    string classifier_version = 8;
+}
+
+// ClassifierStats contains runtime statistics from the classifier.
+message ClassifierStats {
+    // Total flows processed since start
+    uint64 total_flows = 1;
+
+    // Total packets processed
+    uint64 total_packets = 2;
+
+    // Total bytes processed
+    uint64 total_bytes = 3;
+
+    // Flows blocked by policy
+    uint64 blocked_flows = 4;
+
+    // Flows rate-limited by policy
+    uint64 rate_limited_flows = 5;
+
+    // Flows blocked via cached policy
+    uint64 cached_blocked_flows = 6;
+
+    // Flows rate-limited via cached policy
+    uint64 cached_rate_limited_flows = 7;
+
+    // Uptime in seconds
+    uint64 uptime_seconds = 8;
+
+    // Current flows per second (last minute average)
+    float flows_per_second = 9;
+}
+
+// ClassifierInstallRequest is used for initial classifier installation.
+// This is a higher-level message that includes everything needed to
+// set up the classifier on a new device.
+message ClassifierInstallRequest {
+    // Full configuration for the classifier
+    ClassifierConfig config = 1;
+
+    // Initial policy rules to install (optional)
+    repeated BlockRuleConfig initial_block_rules = 2;
+    repeated RateLimitRuleConfig initial_rate_limits = 3;
+
+    // Whether to enable and start immediately after install
+    bool enable_after_install = 4;
+
+    // Timestamp of the request
+    uint64 timestamp_ms = 5;
+
+    // Correlation ID for tracking
+    string correlation_id = 6;
+}
+
+// BlockRuleConfig for initial policy setup
+message BlockRuleConfig {
+    string app_name = 1;
+    string app_pattern = 2;
+    uint32 priority = 3;
+    uint32 idle_timeout = 4;
+    bool enabled = 5;
+}
+
+// RateLimitRuleConfig for initial policy setup
+message RateLimitRuleConfig {
+    string app_name = 1;
+    string app_pattern = 2;
+    uint32 meter_id = 3;
+    uint32 rate_kbps = 4;
+    uint32 burst_kbps = 5;
+    uint32 priority = 6;
+    uint32 idle_timeout = 7;
+    bool enabled = 8;
+}
+
+// ClassifierInstallResponse confirms the installation result.
+message ClassifierInstallResponse {
+    // Whether the installation was successful
+    bool success = 1;
+
+    // Human-readable message
+    string message = 2;
+
+    // Current status after installation
+    ClassifierStatus status = 3;
+
+    // Number of block rules installed
+    uint32 block_rules_installed = 4;
+
+    // Number of rate limit rules installed
+    uint32 rate_limit_rules_installed = 5;
+
+    // Timestamp of the response
+    uint64 timestamp_ms = 6;
+
+    // Correlation ID from the request
+    string correlation_id = 7;
+
+    // Error details if installation failed
+    string error_details = 8;
+}

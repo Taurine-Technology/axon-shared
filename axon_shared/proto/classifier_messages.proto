@@ -1,0 +1,166 @@
+// Protocol Buffer schema for NFStream-based traffic classification
+//
+// This schema defines the wire format for classified flow data transmitted from
+// classifier agents to the Axon controller via MQTT.
+//
+// The classifier uses NFStream for deep packet inspection (nDPI) to identify
+// applications locally, then sends both the raw payload samples and the
+// classification results to the controller.
+//
+// Usage:
+//   1. Classifier serializes ClassifiedFlowBatch using this schema
+//   2. Compresses with Zstandard
+//   3. Publishes to MQTT topic: axon/data/{site_id}/{device_id}/classified_flows
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. classifier_messages.proto
+
+syntax = "proto3";
+
+package axon.classifier;
+
+// ClassifiedFlow represents a single network flow with NFStream classification.
+// Contains the 5-tuple, payload samples, and nDPI classification results.
+message ClassifiedFlow {
+    // ============================================
+    // Basic 5-tuple (compatible with FlowData)
+    // ============================================
+
+    // Source IP address (IPv4 or IPv6) - always the client (private IP)
+    string src_ip = 1;
+
+    // Destination IP address (IPv4 or IPv6) - always the remote server
+    string dst_ip = 2;
+
+    // Source port number (client port)
+    uint32 src_port = 3;
+
+    // Destination port number (server port)
+    uint32 dst_port = 4;
+
+    // Source MAC address (client MAC)
+    string src_mac = 5;
+
+    // Destination MAC address (gateway/router MAC)
+    string dst_mac = 6;
+
+    // Protocol flag: true = TCP, false = UDP
+    bool is_tcp = 7;
+
+    // Raw payload sample bytes for ML classification
+    // Format: NUM_PACKETS packets, each NUM_BYTES (default: 5 * 225 = 1125 bytes)
+    // Each packet is padded with zeros if shorter than NUM_BYTES
+    bytes payload_sample = 8;
+
+    // Flow identifier for correlation and OpenFlow cookie composition
+    // 32-bit hash of the flow tuple
+    uint32 flow_id = 9;
+
+    // ============================================
+    // NFStream Classification Data (nDPI)
+    // ============================================
+
+    // Application name identified by nDPI
+    // Examples: "TLS", "QUIC.YouTube", "HTTP", "DNS.Google", "TLS.Apple"
+    string application_name = 10;
+
+    // Application category from nDPI
+    // Examples: "Web", "Media", "Network", "System", "Cloud"
+    string application_category = 11;
+
+    // Classification confidence level (0-6)
+    // 0 = Unknown, 1 = Match by port, 2 = DPI, 3 = Match by IP, etc.
+    uint32 application_confidence = 12;
+
+    // Server Name Indication (SNI) from TLS/QUIC Client Hello
+    // Empty string if not available
+    string requested_server_name = 13;
+
+    // TLS/QUIC client fingerprint (JA3-style hash)
+    // Used for client identification
+    string client_fingerprint = 14;
+
+    // TLS/QUIC server fingerprint (JA3S-style hash)
+    // Used for server identification
+    string server_fingerprint = 15;
+
+    // ============================================
+    // Traffic Statistics
+    // ============================================
+
+    // Total packets in both directions
+    uint32 bidirectional_packets = 16;
+
+    // Total bytes in both directions
+    uint64 bidirectional_bytes = 17;
+
+    // Flow duration in milliseconds
+    uint32 bidirectional_duration_ms = 18;
+
+    // Packets from source to destination (client to server)
+    uint32 src2dst_packets = 19;
+
+    // Packets from destination to source (server to client)
+    uint32 dst2src_packets = 20;
+
+    // Bytes from source to destination
+    uint64 src2dst_bytes = 21;
+
+    // Bytes from destination to source
+    uint64 dst2src_bytes = 22;
+
+    // ============================================
+    // Metadata
+    // ============================================
+
+    // How the SNI was obtained:
+    // "direct" = extracted from this flow's TLS/QUIC handshake
+    // "cached" = looked up from IP-to-SNI cache (previous flow to same IP had SNI)
+    // "ip" = no SNI available, using destination IP as fallback
+    string sni_source = 23;
+
+    // Number of payload packets actually collected (may be less than requested)
+    uint32 payload_packet_count = 24;
+
+    // ============================================
+    // Cookie and Classification Tracking
+    // ============================================
+
+    // 64-bit OpenFlow cookie assigned to this flow for OVS tracking
+    // Cookie structure: (flow_tuple_hash << 32) | classification_id
+    // Upper 32 bits: Hash of 5-tuple + timestamp (unique flow identifier)
+    // Lower 32 bits: Hash of normalized app name (classification identifier)
+    uint64 openflow_cookie = 25;
+
+    // 32-bit classification identifier (lower 32 bits of cookie)
+    // Hash of normalized_app_name for efficient API correlation and lookup
+    uint32 classification_id = 26;
+
+    // Normalized application name (lowercase, app-specific)
+    // Extracted from application_name: "QUIC.Instagram" -> "instagram"
+    // Used for consistent tracking across different transport protocols
+    // Examples: "instagram", "youtube", "quic", "tls", "unknown"
+    string normalized_app_name = 27;
+}
+
+// ClassifiedFlowBatch represents a batch of classified flows from a single device.
+// Used for efficient transmission of multiple flows in one MQTT message.
+message ClassifiedFlowBatch {
+    // Switch/bridge identifier (e.g., "br0", "ovs-br")
+    string switch_id = 1;
+
+    // Site identifier for multi-tenancy
+    string site_id = 2;
+
+    // Device identifier (MAC or UUID of the agent)
+    string device_id = 3;
+
+    // Batch creation timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 4;
+
+    // List of classified flows in this batch
+    repeated ClassifiedFlow flows = 5;
+
+    // Classifier version for compatibility checking
+    string classifier_version = 6;
+}

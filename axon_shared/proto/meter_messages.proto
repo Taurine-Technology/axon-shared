@@ -1,0 +1,115 @@
+// Protocol Buffer schema for OVS meter management
+//
+// This schema defines the wire format for meter commands transmitted from
+// the Axon controller to switches via MQTT, and responses back.
+//
+// MQTT Topic Pattern:
+//   Command:  axon/control/{site_id}/{device_id}/meter/{action}
+//   Response: axon/control/{site_id}/{device_id}/meter/{action}/response
+//
+// Supported Actions:
+//   - create: Create a new meter on the switch
+//     Topic: axon/control/{site_id}/{device_id}/meter/create
+//     OVS:   ovs-ofctl add-meter {bridge} meter={id},kbps,burst,band=type=drop,rate={rate},burst_size={burst} -OOpenflow13
+//
+//   - delete: Remove an existing meter from the switch
+//     Topic: axon/control/{site_id}/{device_id}/meter/delete
+//     OVS:   ovs-ofctl del-meter {bridge} meter={id} -OOpenflow13
+//
+//   - modify: Modify an existing meter's parameters (future)
+//     Topic: axon/control/{site_id}/{device_id}/meter/modify
+//     OVS:   ovs-ofctl mod-meter {bridge} meter={id},kbps,burst,band=type=drop,rate={rate},burst_size={burst} -OOpenflow13
+//
+// Usage:
+//   1. Controller serializes MeterCommand using this schema (set action field appropriately)
+//   2. Publishes to MQTT topic: axon/control/{site_id}/{device_id}/meter/{action}
+//   3. Switch executes corresponding ovs-ofctl command
+//   4. Switch responds with MeterResponse on: axon/control/{site_id}/{device_id}/meter/{action}/response
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. meter_messages.proto
+
+syntax = "proto3";
+
+package axon.ovs;
+
+// MeterType represents the type of meter band action.
+enum MeterType {
+    METER_TYPE_UNSPECIFIED = 0;
+    METER_TYPE_DROP = 1;        // Drop packets exceeding rate
+    METER_TYPE_DSCP_REMARK = 2; // Remark DSCP for packets exceeding rate (future)
+}
+
+// MeterAction represents the action to perform on the meter.
+enum MeterAction {
+    METER_ACTION_UNSPECIFIED = 0;
+    METER_ACTION_CREATE = 1;  // Create a new meter
+    METER_ACTION_DELETE = 2;  // Delete an existing meter
+    METER_ACTION_MODIFY = 3;  // Modify an existing meter (future)
+}
+
+// MeterCommand represents a command to create, modify, or delete a meter on a switch.
+// Sent from Axon controller to the switch agent.
+message MeterCommand {
+    // Action to perform
+    MeterAction action = 1;
+
+    // Unique meter identifier on the switch (used in ovs-ofctl meter=N)
+    uint32 meter_id = 2;
+
+    // Bridge name where the meter should be installed (e.g., "br0")
+    string bridge_name = 3;
+
+    // Meter band type (e.g., DROP)
+    MeterType meter_type = 4;
+
+    // Rate limit in kilobits per second (kbps)
+    // Must be > 0
+    uint32 rate = 5;
+
+    // Burst size in kilobits
+    uint32 burst_size = 6;
+
+    // Optional: Device identifier for correlation
+    string device_id = 7;
+
+    // Optional: Site identifier for multi-tenancy
+    string site_id = 8;
+
+    // Command timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 9;
+}
+
+// MeterResponseStatus indicates the result of a meter operation.
+enum MeterResponseStatus {
+    METER_RESPONSE_STATUS_UNSPECIFIED = 0;
+    METER_RESPONSE_STATUS_SUCCESS = 1;
+    METER_RESPONSE_STATUS_ERROR = 2;
+    METER_RESPONSE_STATUS_ALREADY_EXISTS = 3;
+    METER_RESPONSE_STATUS_NOT_FOUND = 4;
+}
+
+// MeterResponse represents the result of a meter operation from the switch.
+// Sent from the switch agent back to the Axon controller.
+message MeterResponse {
+    // Result status of the operation
+    MeterResponseStatus status = 1;
+
+    // Meter ID that was operated on
+    uint32 meter_id = 2;
+
+    // Bridge name where the meter was installed
+    string bridge_name = 3;
+
+    // Human-readable message (success confirmation or error description)
+    string message = 4;
+
+    // Original action that was requested
+    MeterAction action = 5;
+
+    // Response timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 6;
+
+    // Optional: Error code for programmatic handling
+    string error_code = 7;
+}

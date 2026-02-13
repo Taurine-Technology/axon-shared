@@ -1,4 +1,4 @@
-# axon-shared
+# Axon Shared
 
 Shared protocol definitions, MQTT topic patterns, and common utilities for the
 [Axon](https://taurinetech.com) network management platform.
@@ -14,17 +14,20 @@ This package is used by both [axon-ce](https://github.com/Taurine-Technology/axo
 - **Shared Constants** — Common configuration values and enums
 
 ## Installation
+
 ```bash
 pip install "axon-shared @ git+https://github.com/Taurine-Technology/axon-shared.git@v0.1.0"
 ```
 
 ## Usage
+
 ```python
 from axon_shared.proto import policy_messages_pb2
 from axon_shared.mqtt.topics import DEVICE_STATS, control_pattern
 ```
 
 ## Regenerating Protobuf Files
+
 ```bash
 cd axon_shared/proto
 make proto

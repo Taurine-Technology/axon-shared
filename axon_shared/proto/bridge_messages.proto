@@ -1,0 +1,65 @@
+// Protocol Buffer schema for OVS bridge lifecycle management
+//
+// This schema defines the wire format for bridge commands transmitted from
+// the Axon controller to switches via MQTT, and responses back.
+//
+// MQTT Topic Pattern:
+//   Command:  axon/control/{site_id}/{device_id}/bridge/{action}
+//   Response: axon/control/{site_id}/{device_id}/bridge/{action}/response
+//
+// Supported Actions:
+//   - create: Create a new bridge on the switch
+//     Topic: axon/control/{site_id}/{device_id}/bridge/create
+//     OVS:   ovs-vsctl add-br {bridge_name} -- set bridge {bridge_name} protocols={openflow_version}
+//
+//   - delete: Remove an existing bridge from the switch
+//     Topic: axon/control/{site_id}/{device_id}/bridge/delete
+//     OVS:   ovs-vsctl del-br {bridge_name}
+//
+//   - update_ports: Declaratively set ports on an existing bridge
+//     Topic: axon/control/{site_id}/{device_id}/bridge/update_ports
+//     OVS:   ovs-vsctl add-port / del-port as needed
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. bridge_messages.proto
+
+syntax = "proto3";
+
+package axon.ovs;
+
+enum BridgeAction {
+    BRIDGE_ACTION_UNSPECIFIED = 0;
+    BRIDGE_ACTION_CREATE = 1;
+    BRIDGE_ACTION_DELETE = 2;
+    BRIDGE_ACTION_UPDATE_PORTS = 3;
+}
+
+enum BridgeResponseStatus {
+    BRIDGE_RESPONSE_STATUS_UNSPECIFIED = 0;
+    BRIDGE_RESPONSE_STATUS_SUCCESS = 1;
+    BRIDGE_RESPONSE_STATUS_ERROR = 2;
+    BRIDGE_RESPONSE_STATUS_ALREADY_EXISTS = 3;
+    BRIDGE_RESPONSE_STATUS_NOT_FOUND = 4;
+}
+
+message BridgeCommand {
+    BridgeAction action = 1;
+    string bridge_name = 2;
+    repeated string ports = 3;         // CREATE: initial ports. UPDATE_PORTS: desired port list. DELETE: ignored.
+    string openflow_version = 4;       // CREATE only (e.g., "OpenFlow13")
+    string correlation_id = 5;         // UUID for request/response matching
+    string device_id = 6;
+    string site_id = 7;
+    uint64 timestamp_ms = 8;
+}
+
+message BridgeResponse {
+    BridgeResponseStatus status = 1;
+    string bridge_name = 2;
+    string message = 3;
+    BridgeAction action = 4;
+    string correlation_id = 5;         // Echoed from command
+    repeated string active_ports = 6;  // Current ports after operation (empty for DELETE)
+    uint64 timestamp_ms = 7;
+    string error_code = 8;
+}

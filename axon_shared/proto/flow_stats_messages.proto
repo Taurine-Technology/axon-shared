@@ -1,0 +1,73 @@
+// Protocol Buffer schema for flow statistics
+//
+// This schema defines the wire format for flow statistics transmitted from
+// switch agents to the Axon controller via MQTT.
+//
+// MQTT Topic Pattern:
+//   axon/data/{site_id}/{device_id}/flow-stats
+//
+// Switch agents poll OVS every 10 seconds and send batched flow statistics
+// for all metered flows. The controller buffers these in Redis and batch
+// writes to TimescaleDB for efficient time-series storage.
+//
+// Usage:
+//   1. Switch agent runs: ovs-ofctl dump-flows {bridge} -O Openflow13
+//   2. Parses flows with meter actions to extract cookie, bytes, packets
+//   3. Serializes FlowStatsBatch using this schema
+//   4. Compresses with Zstandard
+//   5. Publishes to MQTT topic: axon/data/{site_id}/{device_id}/flow-stats
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. flow_stats_messages.proto
+
+syntax = "proto3";
+
+package axon.analytics;
+
+// FlowStatsEntry represents statistics for a single metered flow.
+// Collected from ovs-ofctl dump-flows output.
+message FlowStatsEntry {
+    // 64-bit OpenFlow cookie (category_cookie << 32 | flow_id)
+    // This identifies both the traffic category and specific flow
+    uint64 openflow_cookie = 1;
+
+    // Meter ID applied to this flow
+    uint32 meter_id = 2;
+
+    // Cumulative byte count (n_bytes from OVS)
+    uint64 byte_count = 3;
+
+    // Cumulative packet count (n_packets from OVS)
+    uint64 packet_count = 4;
+
+    // Flow duration in seconds (duration from OVS)
+    float duration_sec = 5;
+
+    // OpenFlow rule priority
+    uint32 priority = 6;
+
+    // Protocol: "TCP", "UDP", "ICMP", "ARP", or "OTHER"
+    string protocol = 7;
+
+    // Source MAC address (dl_src from OVS flow match)
+    string mac_address = 8;
+}
+
+// FlowStatsBatch represents a batch of flow statistics from a single switch.
+// Sent periodically (every 10 seconds) for all active metered flows.
+message FlowStatsBatch {
+    // Site identifier for multi-tenancy
+    string site_id = 1;
+
+    // Switch device identifier (UUID)
+    string device_id = 2;
+
+    // OVS bridge name (e.g., "br0", "odl-br")
+    string bridge_name = 3;
+
+    // Batch creation timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 4;
+
+    // List of flow statistics entries
+    repeated FlowStatsEntry stats = 5;
+}

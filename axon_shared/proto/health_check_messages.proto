@@ -1,0 +1,134 @@
+// Protocol Buffer schema for device health check messages
+//
+// This schema defines the wire format for health check requests and responses
+// transmitted between the Axon controller and switches via MQTT.
+//
+// MQTT Topic Pattern:
+//   Request:  axon/control/{site_id}/{device_id}/health_check/request
+//   Response: axon/control/{site_id}/{device_id}/health_check/response
+//
+// Usage:
+//   1. Controller serializes HealthCheckRequest using this schema
+//   2. Publishes to MQTT topic: axon/control/{site_id}/{device_id}/health_check/request
+//   3. Switch queries current OVS state (bridges, meters, etc.)
+//   4. Switch responds with HealthCheckResponse on: axon/control/{site_id}/{device_id}/health_check/response
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. health_check_messages.proto
+
+syntax = "proto3";
+
+package axon.ovs;
+
+// HealthCheckStatus indicates the overall status of a health check operation.
+enum HealthCheckStatus {
+    HEALTH_CHECK_STATUS_UNSPECIFIED = 0;
+    HEALTH_CHECK_STATUS_SUCCESS = 1;    // All queries succeeded
+    HEALTH_CHECK_STATUS_ERROR = 2;       // Fatal error
+    HEALTH_CHECK_STATUS_PARTIAL = 3;    // Some queries failed, others succeeded
+}
+
+// HealthCheckRequest is sent from the controller to request current device state.
+message HealthCheckRequest {
+    // Unique request identifier (UUID) for correlation
+    string request_id = 1;
+
+    // Request timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 2;
+
+    // Optional: Device identifier for validation
+    string device_id = 3;
+
+    // Optional: Site identifier for validation
+    string site_id = 4;
+
+    // Include bridge configuration in response
+    bool include_bridges = 5;
+
+    // Include meter state in response
+    bool include_meters = 6;
+
+    // Include flow rules in response (can be large, use sparingly)
+    bool include_flows = 7;
+
+    // Include port state in response
+    bool include_ports = 8;
+
+    // Optional: Specific bridge name to check (empty = all bridges)
+    string bridge_name = 9;
+}
+
+// BridgeState represents the state of an OVS bridge.
+message BridgeState {
+    // Bridge name (e.g., "br0")
+    string name = 1;
+
+    // Whether bridge exists on the switch
+    bool exists = 2;
+
+    // List of port names attached to this bridge
+    repeated string ports = 3;
+
+    // OpenFlow version (e.g., "OpenFlow13")
+    string openflow_version = 4;
+
+    // Datapath ID (if available)
+    string datapath_id = 5;
+}
+
+// MeterState represents the state of an OVS meter.
+message MeterState {
+    // Bridge name where meter is installed
+    string bridge_name = 1;
+
+    // Meter ID
+    uint32 meter_id = 2;
+
+    // Rate limit in kbps
+    uint32 rate = 3;
+
+    // Burst size in kbits
+    uint32 burst_size = 4;
+
+    // Meter type (e.g., "drop")
+    string meter_type = 5;
+
+    // Meter flags (e.g., ["kbps", "burst"])
+    repeated string flags = 6;
+}
+
+// HealthCheckResponse is sent from the switch back to the controller with current state.
+message HealthCheckResponse {
+    // Correlation ID from request
+    string request_id = 1;
+
+    // Overall status of the health check
+    HealthCheckStatus status = 2;
+
+    // Response timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 3;
+
+    // Device ID
+    string device_id = 4;
+
+    // Site ID
+    string site_id = 5;
+
+    // Bridge states (if include_bridges was true)
+    repeated BridgeState bridges = 6;
+
+    // Meter states (if include_meters was true)
+    repeated MeterState meters = 7;
+
+    // Error message if status is ERROR
+    string error_message = 8;
+
+    // Partial errors for individual queries (if status is PARTIAL)
+    repeated string partial_errors = 9;
+
+    // Agent version
+    string agent_version = 10;
+
+    // Switch uptime in seconds
+    uint64 uptime_seconds = 11;
+}

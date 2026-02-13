@@ -6,10 +6,10 @@ readme = "README.md"
 license = "AGPL-3.0-only"
 requires-python = ">=3.10"
 authors = [
-    { name = "Taurine Technology", email = "opensource@taurinetech.com" }
+    { name = "Taurine Technology", email = "info@taurinetech.com" }
 ]
 dependencies = [
-    "protobuf>=4.0,<6.0",
+    "protobuf==4.25.8",
 ]
 
 [project.optional-dependencies]

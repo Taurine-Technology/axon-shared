@@ -1,0 +1,57 @@
+// Protocol Buffer schema for interface change notifications
+//
+// This schema defines the wire format for interface change notifications
+// transmitted from switch agents to the Axon controller via MQTT.
+//
+// MQTT Topic Pattern:
+//   Notification: axon/data/{site_id}/{device_id}/interfaces
+//
+// The agent monitors network interfaces and publishes notifications when
+// interfaces are added or removed. This allows the API to stay synchronized
+// with the actual hardware configuration of the device.
+//
+// Usage:
+//   1. Agent detects interface change (add/remove)
+//   2. Agent serializes InterfaceChangeNotification using this schema
+//   3. Publishes to MQTT topic: axon/data/{site_id}/{device_id}/interfaces
+//   4. API receives message, deserializes, and updates database
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. interface_messages.proto
+
+syntax = "proto3";
+
+package axon.network_device;
+
+// NetworkInterface represents a network interface on a device.
+message NetworkInterface {
+    // Interface name (e.g., "eth0", "eth1", "wlan0")
+    string name = 1;
+
+    // MAC address in lowercase with colons (e.g., "2c:cf:67:2c:14:94")
+    string mac = 2;
+
+    // Interface speed in Mbps (0 if not available)
+    uint32 speed = 3;
+}
+
+// InterfaceChanges represents what changed in the interface list.
+message InterfaceChanges {
+    // Newly detected interfaces
+    repeated NetworkInterface added = 1;
+
+    // Removed interfaces
+    repeated NetworkInterface removed = 2;
+}
+
+// InterfaceChangeNotification is published when interfaces are added or removed.
+message InterfaceChangeNotification {
+    // Unix timestamp (seconds since epoch) when the change was detected
+    double timestamp = 1;
+
+    // Complete list of all current network interfaces on the device
+    repeated NetworkInterface interfaces = 2;
+
+    // Details about what changed (added/removed interfaces)
+    InterfaceChanges changes = 3;
+}
