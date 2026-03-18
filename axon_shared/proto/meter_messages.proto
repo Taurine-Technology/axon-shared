@@ -123,4 +123,14 @@ message MeterResponse {
 
     // Source of this response — controller-initiated or agent self-heal
     MeterResponseSource source = 8;
+
+    // Rate in kbps (echoed from the meter config, enables controller to create
+    // Meter DB records without a separate rule lookup)
+    uint32 rate = 9;
+
+    // Burst size in kbps (0 = no burst)
+    uint32 burst_size = 10;
+
+    // Meter band type
+    MeterType meter_type = 11;
 }
