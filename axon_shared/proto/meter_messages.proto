@@ -89,6 +89,14 @@ enum MeterResponseStatus {
     METER_RESPONSE_STATUS_NOT_FOUND = 4;
 }
 
+// Source of a meter operation response
+enum MeterResponseSource {
+    // Default — controller-initiated (backwards compatible with existing responses)
+    METER_RESPONSE_SOURCE_CONTROLLER = 0;
+    // Agent detected missing meter and recreated it autonomously
+    METER_RESPONSE_SOURCE_AGENT_SELF_HEAL = 1;
+}
+
 // MeterResponse represents the result of a meter operation from the switch.
 // Sent from the switch agent back to the Axon controller.
 message MeterResponse {
@@ -112,4 +120,7 @@ message MeterResponse {
 
     // Optional: Error code for programmatic handling
     string error_code = 7;
+
+    // Source of this response — controller-initiated or agent self-heal
+    MeterResponseSource source = 8;
 }
