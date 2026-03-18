@@ -1,6 +1,6 @@
 [project]
 name = "axon-shared"
-version = "0.1.0"
+version = "0.1.1"
 description = "Shared protocol definitions and utilities for the Axon network management platform"
 readme = "README.md"
 license = "AGPL-3.0-only"
