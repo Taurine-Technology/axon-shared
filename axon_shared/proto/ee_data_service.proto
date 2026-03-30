@@ -1,0 +1,133 @@
+// Protocol Buffer schema for EE flow data ingestion service
+//
+// This schema defines the wire format for enriched flow data transmitted
+// from agents to a dedicated data collection server via gRPC.
+//
+// Usage:
+//   1. Agent serializes EEFlows, compresses with zstd
+//   2. Wraps in EEFlowBatch with metadata
+//   3. Streams batches via FlowDataService.IngestFlows RPC
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. ee_data_service.proto
+
+syntax = "proto3";
+
+package axon.data;
+
+service FlowDataService {
+    // Client-streaming: agent sends batches, collector acknowledges
+    rpc IngestFlows (stream EEFlowBatch) returns (IngestResponse);
+}
+
+message RawPacket {
+    // Full raw IP packet
+    bytes data = 1;
+
+    // Capture timestamp (microseconds since epoch)
+    uint64 timestamp_us = 2;
+}
+
+message EEFlow {
+    // Flow start timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 1;
+
+    // Source IP address (IPv4 or IPv6)
+    string src_ip = 2;
+
+    // Destination IP address (IPv4 or IPv6)
+    string dst_ip = 3;
+
+    // Source port number
+    uint32 src_port = 4;
+
+    // Destination port number
+    uint32 dst_port = 5;
+
+    // Source MAC address
+    string src_mac = 6;
+
+    // Destination MAC address
+    string dst_mac = 7;
+
+    // Protocol flag: true = TCP, false = UDP
+    bool is_tcp = 8;
+
+    // nDPI application label
+    string application_name = 9;
+
+    // Server Name Indication (SNI)
+    string requested_server_name = 10;
+
+    // Total packets in both directions
+    uint64 bidirectional_packets = 11;
+
+    // Total bytes in both directions
+    uint64 bidirectional_bytes = 12;
+
+    // Flow duration in milliseconds
+    uint64 flow_duration_ms = 13;
+
+    // Up to 10 full raw IP packets for PCAP reconstruction
+    repeated RawPacket raw_packets = 14;
+
+    // Future: ML classification label
+    string ml_label = 15;
+
+    // Future: ML confidence score (0.0 - 1.0)
+    float ml_confidence = 16;
+
+    // nDPI classification confidence (0.0 - 1.0)
+    float ndpi_confidence = 17;
+}
+
+message EEFlowBatch {
+    // Device identifier (MAC or UUID of the agent)
+    string device_id = 1;
+
+    // Site identifier for multi-tenancy
+    string site_id = 2;
+
+    // Switch/device identifier (e.g., "openflow:172223708800235")
+    string switch_id = 3;
+
+    // Batch creation timestamp in milliseconds since epoch
+    uint64 timestamp_ms = 4;
+
+    // Geographic region identifier
+    string region = 5;
+
+    // ISO 3166-1 alpha-2 country code
+    string country_code = 6;
+
+    // GPS latitude
+    double latitude = 7;
+
+    // GPS longitude
+    double longitude = 8;
+
+    // zstd-compressed serialized EEFlows message
+    bytes compressed_flows = 9;
+
+    // Number of flows in compressed payload (for server pre-allocation)
+    uint32 flow_count = 10;
+
+    // Per-site API authentication token
+    string auth_token = 11;
+}
+
+// Wrapper message for compression: serialize EEFlows, then zstd-compress
+message EEFlows {
+    repeated EEFlow flows = 1;
+}
+
+message IngestResponse {
+    // Whether the batch was successfully ingested
+    bool success = 1;
+
+    // Number of flows accepted from the batch
+    uint32 flows_accepted = 2;
+
+    // Error description if success is false
+    string error_message = 3;
+}

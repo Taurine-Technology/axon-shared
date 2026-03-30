@@ -70,3 +70,13 @@ try:
     from axon_shared.proto import uptime_check_messages_pb2  # noqa: F401
 except ImportError:
     uptime_check_messages_pb2 = None
+
+try:
+    from axon_shared.proto import ee_data_service_pb2  # noqa: F401
+except ImportError:
+    ee_data_service_pb2 = None
+
+try:
+    from axon_shared.proto import ee_data_service_pb2_grpc  # noqa: F401
+except ImportError:
+    ee_data_service_pb2_grpc = None
