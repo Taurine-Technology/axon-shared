@@ -9,12 +9,12 @@ authors = [
     { name = "Taurine Technology", email = "info@taurinetech.com" }
 ]
 dependencies = [
-    "protobuf==4.25.1",
+    "protobuf==6.33.2",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "grpcio-tools==1.59.3",
+    "grpcio-tools==1.76.0",
     "flake8>=6.0",
 ]
 test = [
