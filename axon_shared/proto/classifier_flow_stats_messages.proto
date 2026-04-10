@@ -70,6 +70,14 @@ message ClassifierFlowStatsEntry {
 
     // Destination port number
     uint32 dst_port = 17;
+
+    // Client device hostname resolved via passive DHCP snooping or mDNS
+    // Empty string if hostname not resolved / not available
+    string src_hostname = 18;
+
+    // Server Name Indication (SNI) from TLS/QUIC Client Hello
+    // Empty string if not available (e.g., "www.instagram.com")
+    string requested_server_name = 19;
 }
 
 // ClassifierFlowStatsBatch contains a batch of flow statistics from a device.

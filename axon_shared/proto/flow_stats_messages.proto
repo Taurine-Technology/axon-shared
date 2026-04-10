@@ -51,6 +51,10 @@ message FlowStatsEntry {
 
     // Source MAC address (dl_src from OVS flow match)
     string mac_address = 8;
+
+    // Client device hostname resolved via passive DHCP snooping or mDNS
+    // Empty string if hostname not resolved / not available
+    string hostname = 9;
 }
 
 // FlowStatsBatch represents a batch of flow statistics from a single switch.

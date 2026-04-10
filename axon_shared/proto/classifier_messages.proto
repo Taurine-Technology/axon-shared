@@ -141,6 +141,15 @@ message ClassifiedFlow {
     // Used for consistent tracking across different transport protocols
     // Examples: "instagram", "youtube", "quic", "tls", "unknown"
     string normalized_app_name = 27;
+
+    // ============================================
+    // Hostname Resolution
+    // ============================================
+
+    // Client device hostname resolved via passive DHCP snooping or mDNS
+    // Empty string if hostname not resolved / not available
+    // Format: no trailing dot (e.g., "Keegans-MacBook-Pro" not "Keegans-MacBook-Pro.local")
+    string src_hostname = 28;
 }
 
 // ClassifiedFlowBatch represents a batch of classified flows from a single device.
