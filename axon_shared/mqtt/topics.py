@@ -66,6 +66,8 @@ POLICY_URLBLOCK_ADD = "policy/urlblock/add"
 POLICY_URLBLOCK_REMOVE = "policy/urlblock/remove"
 POLICY_BLOCKLIST_ADD = "policy/blocklist/add"
 POLICY_BLOCKLIST_REMOVE = "policy/blocklist/remove"
+POLICY_BLOCKLIST_ENTRY_ADD = "policy/blocklist/entry/add"
+POLICY_BLOCKLIST_ENTRY_REMOVE = "policy/blocklist/entry/remove"
 
 # Plugin / Sniffer
 SNIFFER_INSTALL = "plugin/sniffer/install"
