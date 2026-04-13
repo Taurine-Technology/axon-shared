@@ -247,6 +247,36 @@ message BlockListSync {
     bool match_subdomains = 9;
 }
 
+// BlockListEntryUpdate represents an incremental add/remove of entries
+// to/from an existing block list on a device.
+// Used for efficient delta sync when individual entries are added or removed
+// via the API, avoiding re-sending the entire block list.
+message BlockListEntryUpdate {
+    // Block list ID the entries belong to
+    uint32 list_id = 1;
+
+    // Human-readable name (for logging)
+    string name = 2;
+
+    // IP entries to add or remove
+    repeated string ip_entries = 3;
+
+    // Domain entries to add or remove
+    repeated string domain_entries = 4;
+
+    // OVS flow priority (needed for installing new IP flows on add)
+    uint32 priority = 5;
+
+    // Direction for IP entries
+    Direction direction = 6;
+
+    // Idle timeout for new IP flows
+    uint32 idle_timeout = 7;
+
+    // Whether to match subdomains for domain entries
+    bool match_subdomains = 8;
+}
+
 // PolicyUpdate represents a single policy rule change (add/update/remove).
 message PolicyUpdate {
     // Action type
@@ -259,6 +289,7 @@ message PolicyUpdate {
         IPBlockRule ip_block_rule = 6;
         URLBlockRule url_block_rule = 7;
         BlockListSync block_list = 8;
+        BlockListEntryUpdate block_list_entry_update = 9;
     }
 
     // Timestamp of the update (ms since epoch)
