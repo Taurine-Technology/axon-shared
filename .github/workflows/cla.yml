@@ -26,6 +26,6 @@ jobs:
           path-to-signatures: 'signatures/version1/cla.json'
           path-to-document: 'https://gist.github.com/keeganwhite/acbabfc21f2d02fa988cdeb7c5a35262' # e.g. a CLA or a DCO document
           # branch should not be protected
-          branch: 'main'
+          branch: 'cla-signatures'
           allowlist: user1,bot*
 
