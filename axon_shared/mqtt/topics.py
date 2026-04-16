@@ -31,6 +31,25 @@ DISCOVERY = "axon/discovery"
 PROVISION = "axon/provision/{mac}"
 
 # =====================================================================
+# Discovery message fields (JSON payload on DISCOVERY topic)
+# =====================================================================
+DISCOVERY_FIELD_UNIQUE_ID = "unique_id"
+DISCOVERY_FIELD_STATUS = "status"
+DISCOVERY_FIELD_IS_SWITCH = "is_switch"
+DISCOVERY_FIELD_AGENT_VERSION = "axon_agent_version"
+DISCOVERY_FIELD_HARDWARE_INFO = "hardware_info"
+DISCOVERY_FIELD_ENROLLMENT_SECRET = "enrollment_secret"  # EE: optional
+
+# =====================================================================
+# Provision message fields (JSON payload on PROVISION topic)
+# =====================================================================
+PROVISION_FIELD_STATUS = "status"
+PROVISION_FIELD_DEVICE_ID = "device_id"
+PROVISION_FIELD_NETWORK_ID = "network_id"
+PROVISION_FIELD_BRIDGE_CONFIG = "bridge_config"
+PROVISION_STATUS_CLAIMED = "claimed"
+
+# =====================================================================
 # Control Plane topic suffixes (QoS 2)
 # Controller -> Agent
 # =====================================================================
