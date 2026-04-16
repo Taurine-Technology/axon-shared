@@ -81,6 +81,13 @@ DEVICE_CONFIG_PATH = "/etc/axon/config.json"
 CLASSIFIER_CONFIG_PATH = "/etc/axon/classifier_config.json"
 SNIFFER_CONFIG_PATH = "/etc/axon/sniffer_config.json"
 POLICY_CACHE_PATH = "/var/lib/axon/policy_cache.db"
+EE_CONFIG_PATH = "/etc/axon/ee_config.json"
+
+# =====================================================================
+# Enrollment
+# =====================================================================
+ENROLLMENT_TOKEN_PREFIX = "axn_"
+ENROLLMENT_SECRET_PREFIX = "enr_"
 
 # =====================================================================
 # DNS Provider IPs (for dns_icmp uptime checks)
