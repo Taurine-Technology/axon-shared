@@ -13,6 +13,7 @@ proto: $(PB2_FILES) $(GRPC_PB2_FILES)
 
 $(GRPC_PB2_FILES): $(GRPC_PROTO_FILES)
 	python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. $<
+	sed -i 's/^import \([a-zA-Z_][a-zA-Z0-9_]*_pb2\) as/from axon_shared.proto import \1 as/' $(basename $<)_pb2_grpc.py
 
 clean:
 	rm -f *_pb2.py *_pb2_grpc.py
