@@ -1,0 +1,76 @@
+// Protocol Buffer schema for device lifecycle messages
+//
+// This schema defines the wire format for device lifecycle commands
+// transmitted from the Axon controller to agents via MQTT.
+//
+// MQTT Topic Patterns:
+//   Uninstall Request:  axon/control/{site_id}/{device_id}/device/uninstall
+//   Uninstall Response: axon/control/{site_id}/{device_id}/device/uninstall/response
+//
+// Usage:
+//   1. Controller serializes DeviceUninstallCommand and publishes at QoS 2
+//   2. Agent performs teardown (bridges, services, credentials, code)
+//   3. Agent publishes DeviceUninstallResponse at QoS 2 before exiting
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. device_lifecycle_messages.proto
+
+syntax = "proto3";
+
+package axon.device_lifecycle;
+
+// DeviceUninstallCommand is sent from controller to agent to trigger a
+// graceful agent teardown. The agent removes state in a well-defined
+// order and responds with a structured DeviceUninstallResponse.
+message DeviceUninstallCommand {
+    // Unique correlation ID (UUID) set by the controller; the agent echoes
+    // it back on the response and uses it for idempotency.
+    string correlation_id = 1;
+
+    // If true, delete OVS bridges this agent created and their associated
+    // flows/meters/monitoring services.
+    bool remove_bridges = 2;
+
+    // If true, wipe credentials + config files under /etc/axon/ and
+    // /opt/axon-agent/ (bootstrap.json, config.json, classifier_config.json,
+    // sniffer_config.json, ee_config.json) and caches under /var/lib/axon/.
+    bool remove_credentials = 3;
+
+    // If true, remove the agent code and venv at /opt/axon-agent/. This is
+    // the terminal mode: after response the agent stops without restart.
+    // If false, the process exits and systemd restarts it; with no config
+    // it falls through to discovery phase (useful for RMA / site-move).
+    bool remove_agent_code = 4;
+
+    // Seconds to wait between publishing the response and terminating.
+    // Gives the MQTT client time to flush. Default 5 if unset/zero.
+    uint32 grace_seconds = 5;
+}
+
+// DeviceUninstallResponse is sent from agent to controller after teardown.
+// The agent publishes this before exiting; the controller uses it to
+// mark the device as decommissioned and delete the DB record.
+message DeviceUninstallResponse {
+    // Correlation ID from the originating command.
+    string correlation_id = 1;
+
+    // Overall outcome.
+    enum Status {
+        STATUS_UNSPECIFIED = 0;
+        STATUS_OK = 1;        // All requested steps completed
+        STATUS_PARTIAL = 2;   // Some steps failed but teardown continued
+        STATUS_FAILED = 3;    // Teardown could not start (e.g. phase gate)
+    }
+    Status status = 2;
+
+    // Names of steps that completed successfully (e.g. "stop_sniffer",
+    // "delete_bridge:br0", "wipe_etc_axon").
+    repeated string completed_steps = 3;
+
+    // Names of steps that failed, in the same naming scheme.
+    repeated string failed_steps = 4;
+
+    // Human-readable error message. Populated for STATUS_FAILED; may also
+    // carry extra context for STATUS_PARTIAL.
+    string error_message = 5;
+}

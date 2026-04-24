@@ -101,6 +101,10 @@ CLASSIFIER_STATUS_REQUEST = "classifier/status"
 # Flow modification (v1 ML classification)
 FLOW_MOD_ADD = "flow_mod/add"
 
+# Device lifecycle (graceful uninstall / decommission)
+DEVICE_UNINSTALL = "device/uninstall"
+DEVICE_UNINSTALL_RESPONSE = "device/uninstall/response"
+
 # Client status (LWT / Last Will and Testament)
 # Note: uses site-level scope, not device-level
 CLIENT_STATUS = "client/status"

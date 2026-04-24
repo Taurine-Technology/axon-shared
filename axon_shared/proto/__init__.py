@@ -72,6 +72,11 @@ except ImportError:
     uptime_check_messages_pb2 = None
 
 try:
+    from axon_shared.proto import device_lifecycle_messages_pb2  # noqa: F401
+except ImportError:
+    device_lifecycle_messages_pb2 = None
+
+try:
     from axon_shared.proto import ee_data_service_pb2  # noqa: F401
 except ImportError:
     ee_data_service_pb2 = None
