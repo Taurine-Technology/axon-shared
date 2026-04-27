@@ -54,6 +54,12 @@ PROVISION_STATUS_CLAIMED = "claimed"
 # Controller -> Agent
 # =====================================================================
 
+# Agent update / version
+AGENT_UPDATE = "agent/update"
+AGENT_UPDATE_RESPONSE = "agent/update/response"
+AGENT_VERSION_REQUEST = "agent/version"
+AGENT_VERSION_RESPONSE = "agent/version/response"
+
 # OVS Bridge lifecycle
 BRIDGE_CREATE = "bridge/create"
 BRIDGE_DELETE = "bridge/delete"

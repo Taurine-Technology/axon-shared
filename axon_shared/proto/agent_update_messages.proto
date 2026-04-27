@@ -1,0 +1,143 @@
+// Protocol Buffer schema for agent self-update messages
+//
+// Defines the wire format for asking an agent to update its own Python
+// packages (axon-agent-ee, axon-agent-ce, axon-shared) from a PEP 503
+// simple index, and for probing an agent's current package versions.
+// This is orthogonal to AgentHeartbeatResponse.agent_version, which
+// remains the lightweight liveness signal.
+//
+// MQTT Topic Patterns:
+//   Update Command:    axon/control/{site_id}/{device_id}/agent/update
+//   Update Response:   axon/control/{site_id}/{device_id}/agent/update/response
+//   Version Request:   axon/control/{site_id}/{device_id}/agent/version
+//   Version Response:  axon/control/{site_id}/{device_id}/agent/version/response
+//
+// QoS:
+//   Update flows  -> QoS 2 (matches DeviceUninstall; must-not-lose)
+//   Version probe -> QoS 1 (matches uptime heartbeat; once-or-more is fine)
+//
+// Usage:
+//   1. Controller serializes AgentUpdateCommand or AgentVersionRequest
+//      and publishes to the matching control topic.
+//   2. Agent runs the update or collects version info.
+//   3. Agent publishes the corresponding *Response on the response topic.
+//
+// To compile:
+//   python -m grpc_tools.protoc -I. --python_out=. agent_update_messages.proto
+
+syntax = "proto3";
+
+package axon.agent_update;
+
+// AgentUpdateCommand is sent from controller to agent to trigger a
+// self-update of the agent's Python packages from the configured index.
+message AgentUpdateCommand {
+    // Unique correlation ID (UUID) set by the controller; the agent
+    // echoes it back on the response and uses it for idempotency.
+    string correlation_id = 1;
+
+    // Target semver (e.g. "0.3.0"). Empty string means "latest" — the
+    // controller resolves this against the index before publishing, or
+    // the agent resolves at install time, depending on deployment.
+    string target_version = 2;
+
+    // PEP 503 simple index URL to install from. Empty string means the
+    // agent uses its compiled-in default index.
+    string index_url = 3;
+
+    // Post-restart health-check timeout in seconds. 0 means the agent
+    // applies its built-in default (90s).
+    uint32 timeout_seconds = 4;
+
+    // If true, the agent reports what it would do without mutating any
+    // installed package or service.
+    bool dry_run = 5;
+}
+
+// AgentUpdateResponse is sent from agent to controller after a self-
+// update attempt completes (or rolls back).
+message AgentUpdateResponse {
+    // Correlation ID from the originating command.
+    string correlation_id = 1;
+
+    // Overall outcome of the update attempt.
+    enum Status {
+        STATUS_UNSPECIFIED = 0;
+        STATUS_OK = 1;                  // Installed and healthy.
+        STATUS_ROLLED_BACK = 2;         // Installed but health check failed; reverted cleanly.
+        STATUS_FAILED = 3;              // Could not install; previous version still active.
+        STATUS_ALREADY_AT_VERSION = 4;  // No-op; current_version already equals target.
+    }
+    Status status = 2;
+
+    // EE package version before the attempt.
+    string previous_version = 3;
+
+    // EE package version after the attempt. Equals previous_version on
+    // STATUS_FAILED and STATUS_ROLLED_BACK.
+    string current_version = 4;
+
+    // CE package version before the attempt.
+    string previous_ce_version = 5;
+
+    // CE package version after the attempt.
+    string current_ce_version = 6;
+
+    // axon-shared package version before the attempt.
+    string previous_shared_version = 7;
+
+    // axon-shared package version after the attempt.
+    string current_shared_version = 8;
+
+    // Names of steps that completed successfully (from apply.py step
+    // registry, e.g. "snapshot_versions", "pip_install", "restart_units").
+    repeated string completed_steps = 9;
+
+    // Names of steps that failed, in the same naming scheme.
+    repeated string failed_steps = 10;
+
+    // Human-readable error message. Populated for STATUS_FAILED and
+    // STATUS_ROLLED_BACK; may carry extra context otherwise.
+    string error_message = 11;
+
+    // Wall-clock time from message receipt to publishing this response.
+    uint64 duration_ms = 12;
+}
+
+// AgentVersionRequest is sent from controller to agent to ask for a
+// rich version report (per-package versions + service state). This is
+// orthogonal to the lightweight AgentHeartbeatResponse.agent_version.
+message AgentVersionRequest {
+    // Unique correlation ID (UUID) set by the controller.
+    string correlation_id = 1;
+}
+
+// AgentVersionResponse is sent from agent to controller in reply to an
+// AgentVersionRequest.
+message AgentVersionResponse {
+    // Correlation ID from the originating request.
+    string correlation_id = 1;
+
+    // Installed axon-agent-ee package version.
+    string ee_version = 2;
+
+    // Installed axon-agent-ce package version.
+    string ce_version = 3;
+
+    // Installed axon-shared package version.
+    string shared_version = 4;
+
+    // Contents of the /opt/axon-agent/INSTALLER_VERSION sentinel.
+    // Empty string if the file is missing or unreadable.
+    string installer_version = 5;
+
+    // axon-agent-* systemd units currently active on the agent host.
+    repeated string running_services = 6;
+
+    // True if /opt/axon-agent/update.lock is currently held (an update
+    // is in progress). Controllers should back off when this is true.
+    bool update_in_progress = 7;
+
+    // Response timestamp in milliseconds since epoch.
+    uint64 timestamp_ms = 8;
+}
